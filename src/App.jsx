@@ -1,9 +1,11 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { Cloud, CloudOff } from 'lucide-react';
 import BoardItem from './components/BoardItem';
 import ConnectionsLayer from './components/ConnectionsLayer';
 import ConnectionBar from './components/ConnectionBar';
 import SelectionBar from './components/SelectionBar';
 import SearchModal from './components/SearchModal';
+import AuthModal from './components/AuthModal';
 import Toolbar from './components/Toolbar';
 import ZoomBar from './components/ZoomBar';
 import TrashModal from './components/TrashModal';
@@ -12,6 +14,8 @@ import StatsPanel from './components/StatsPanel';
 import { useCanvas } from './hooks/useCanvas';
 import { useBoardData } from './hooks/useBoardData';
 import { useAudioRecorder } from './hooks/useAudioRecorder';
+import { supabase } from './utils/supabase';
+import { pushBoardToCloud, syncAllBoards } from './utils/cloudSync';
 
 export default function App() {
   const [isTrashOpen, setIsTrashOpen] = useState(false);
@@ -21,6 +25,10 @@ export default function App() {
   const [selectedConnId, setSelectedConnId] = useState(null);
   const [isSelectMode, setIsSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState([]);
+
+  const [user, setUser] = useState(null);
+  const [isAuthOpen, setIsAuthOpen] = useState(false);
+  const [syncStatus, setSyncStatus] = useState('Local');
 
   const fileInputRef = useRef(null);
   const audioInputRef = useRef(null);
@@ -50,6 +58,60 @@ export default function App() {
   const { isRecording, startRecording, stopRecording } = useAudioRecorder((audioBase64) => {
     board.addItem('audio', audioBase64);
   });
+
+  // Detecta login/logout
+  useEffect(() => {
+    if (!supabase) return;
+    supabase.auth.getSession().then(({ data }) => setUser(data.session?.user ?? null));
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null);
+    });
+    return () => subscription.unsubscribe();
+  }, []);
+
+  // Puxa quadros da nuvem manualmente
+  const handleSyncNow = useCallback(async () => {
+    if (!user) return;
+    setSyncStatus('Sincronizando...');
+    const synced = await syncAllBoards(user.id);
+    if (synced) {
+      setSyncStatus('Sincronizado');
+      window.location.reload();
+    } else {
+      setSyncStatus('Offline / Erro');
+    }
+  }, [user]);
+
+  // Salva automaticamente na nuvem após 1.5s sem mexer
+  useEffect(() => {
+    if (!user || !board.activeProjectId) return;
+    const activeProj = board.projects.find((p) => p.id === board.activeProjectId);
+    if (!activeProj) return;
+
+    setSyncStatus('Salvando...');
+    const timer = setTimeout(async () => {
+      const ok = await pushBoardToCloud(user.id, {
+        id: activeProj.id,
+        name: activeProj.name,
+        items: board.items,
+        trashItems: board.trashItems,
+        connections: board.connections,
+        view: { pan: canvas.pan, scale: canvas.scale },
+      });
+      setSyncStatus(ok ? 'Sincronizado' : 'Offline');
+    }, 1500);
+
+    return () => clearTimeout(timer);
+  }, [
+    user,
+    board.activeProjectId,
+    board.projects,
+    board.items,
+    board.trashItems,
+    board.connections,
+    canvas.pan,
+    canvas.scale,
+  ]);
 
   // Atalhos: Ctrl+V (colar imagem), Ctrl+Z (desfazer), Ctrl+K (buscar)
   useEffect(() => {
@@ -185,6 +247,22 @@ export default function App() {
         onImportProject={board.importProject}
       />
 
+      {/* Botão da Nuvem */}
+      <button
+        onClick={() => setIsAuthOpen(true)}
+        onMouseDown={(e) => e.stopPropagation()}
+        onTouchStart={(e) => e.stopPropagation()}
+        className={`fixed top-3 right-14 z-40 flex items-center gap-1.5 px-3 py-2 rounded-xl shadow-md border text-xs font-medium transition ${
+          user
+            ? 'bg-blue-50 text-blue-600 border-blue-200 hover:bg-blue-100'
+            : 'bg-white/90 text-gray-600 border-gray-100 hover:bg-gray-50'
+        }`}
+        title="Sincronização na nuvem"
+      >
+        {user ? <Cloud size={16} /> : <CloudOff size={16} />}
+        <span className="hidden md:inline">{user ? syncStatus : 'Entrar'}</span>
+      </button>
+
       <StatsPanel
         items={board.items}
         trashItems={board.trashItems}
@@ -312,6 +390,14 @@ export default function App() {
         onClose={() => setIsSearchOpen(false)}
         items={board.items}
         onSelectItem={handleFocusItem}
+      />
+
+      <AuthModal
+        isOpen={isAuthOpen}
+        onClose={() => setIsAuthOpen(false)}
+        user={user}
+        syncStatus={syncStatus}
+        onSyncNow={handleSyncNow}
       />
 
       <TrashModal
