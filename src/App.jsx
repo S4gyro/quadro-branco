@@ -252,7 +252,7 @@ export default function App() {
         onClick={() => setIsAuthOpen(true)}
         onMouseDown={(e) => e.stopPropagation()}
         onTouchStart={(e) => e.stopPropagation()}
-        className={`fixed top-3 right-14 z-40 flex items-center gap-1.5 px-3 py-2 rounded-xl shadow-md border text-xs font-medium transition ${
+        className={`fixed top-16 right-3 z-40 flex items-center gap-1.5 px-3 py-2 rounded-xl shadow-md border text-xs font-medium transition ${
           user
             ? 'bg-blue-50 text-blue-600 border-blue-200 hover:bg-blue-100'
             : 'bg-white/90 text-gray-600 border-gray-100 hover:bg-gray-50'
