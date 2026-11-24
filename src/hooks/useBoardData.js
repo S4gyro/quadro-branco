@@ -15,8 +15,13 @@ export function useBoardData({ pan, scale, setPan, setScale }) {
     async function initProjects() {
       let savedProjects = await getDB('quadro_projects');
       if (!savedProjects || savedProjects.length === 0) {
-        savedProjects = [{ id: 'default', name: 'Quadro Principal' }];
+        savedProjects = [{ id: 'default', name: 'Quadro Principal', organization: 'Geral' }];
         await setDB('quadro_projects', savedProjects);
+      } else {
+        savedProjects = savedProjects.map((p) => ({
+          ...p,
+          organization: p.organization || 'Geral',
+        }));
       }
       const lastActive = localStorage.getItem('quadro_active_project');
       const validId = savedProjects.some((p) => p.id === lastActive) ? lastActive : savedProjects[0].id;
@@ -95,13 +100,45 @@ export function useBoardData({ pan, scale, setPan, setScale }) {
     setHistory((prev) => prev.slice(0, -1));
   };
 
-  // CRUD Projetos
-  const createProject = () => {
-    const name = window.prompt('Nome do novo quadro:', `Quadro ${projects.length + 1}`);
+  // CRUD Projetos e Organizações
+  const createProject = (targetOrg) => {
+    const activeProj = projects.find((p) => p.id === activeProjectId);
+    const orgName = typeof targetOrg === 'string' && targetOrg.trim()
+      ? targetOrg.trim()
+      : activeProj?.organization || 'Geral';
+
+    const name = window.prompt(`Nome do novo quadro em "${orgName}":`, `Quadro ${projects.length + 1}`);
     if (!name || !name.trim()) return;
-    const newProj = { id: Date.now().toString(), name: name.trim() };
+
+    const newProj = { id: Date.now().toString(), name: name.trim(), organization: orgName };
     setProjects((prev) => [...prev, newProj]);
     setActiveProjectId(newProj.id);
+  };
+
+  const createOrganization = () => {
+    const orgName = window.prompt('Nome da nova organização:');
+    if (!orgName || !orgName.trim()) return;
+    const boardName = window.prompt(`Nome do primeiro quadro em "${orgName.trim()}":`, 'Quadro 1');
+    if (!boardName || !boardName.trim()) return;
+
+    const newProj = { id: Date.now().toString(), name: boardName.trim(), organization: orgName.trim() };
+    setProjects((prev) => [...prev, newProj]);
+    setActiveProjectId(newProj.id);
+  };
+
+  const renameOrganization = (oldOrgName) => {
+    const newOrgName = window.prompt('Novo nome da organização:', oldOrgName);
+    if (!newOrgName || !newOrgName.trim() || newOrgName.trim() === oldOrgName) return;
+    setProjects((prev) =>
+      prev.map((p) => ((p.organization || 'Geral') === oldOrgName ? { ...p, organization: newOrgName.trim() } : p))
+    );
+  };
+
+  const changeProjectOrganization = (id) => {
+    const target = projects.find((p) => p.id === id);
+    const orgName = window.prompt('Mover quadro para qual organização?', target?.organization || 'Geral');
+    if (!orgName || !orgName.trim()) return;
+    setProjects((prev) => prev.map((p) => (p.id === id ? { ...p, organization: orgName.trim() } : p)));
   };
 
   const renameProject = (id) => {
@@ -131,7 +168,14 @@ export function useBoardData({ pan, scale, setPan, setScale }) {
   // Backup (.json)
   const exportProject = () => {
     const active = projects.find((p) => p.id === activeProjectId);
-    const data = { name: active?.name || 'Quadro', items, trashItems, connections, view: { pan, scale } };
+    const data = {
+      name: active?.name || 'Quadro',
+      organization: active?.organization || 'Geral',
+      items,
+      trashItems,
+      connections,
+      view: { pan, scale },
+    };
     const blob = new Blob([JSON.stringify(data)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -149,7 +193,11 @@ export function useBoardData({ pan, scale, setPan, setScale }) {
         const data = JSON.parse(e.target.result);
         if (!Array.isArray(data.items)) throw new Error();
         const newId = Date.now().toString();
-        const newProj = { id: newId, name: data.name || `Importado ${projects.length + 1}` };
+        const newProj = {
+          id: newId,
+          name: data.name || `Importado ${projects.length + 1}`,
+          organization: data.organization || 'Geral',
+        };
 
         await Promise.all([
           setDB(`board_${newId}_items`, data.items || []),
@@ -291,7 +339,8 @@ export function useBoardData({ pan, scale, setPan, setScale }) {
 
   return {
     projects, activeProjectId, setActiveProjectId,
-    createProject, renameProject, deleteProject, exportProject, importProject,
+    createProject, createOrganization, renameOrganization, changeProjectOrganization,
+    renameProject, deleteProject, exportProject, importProject,
     items, trashItems, connections,
     addItem, updateItem, moveItems, deleteItem, deleteMultipleItems, transferItemsToProject,
     restoreItem, emptyTrash,

@@ -93,6 +93,7 @@ export default function App() {
       const ok = await pushBoardToCloud(user.id, {
         id: activeProj.id,
         name: activeProj.name,
+        organization: activeProj.organization || 'Geral',
         items: board.items,
         trashItems: board.trashItems,
         connections: board.connections,
@@ -241,6 +242,9 @@ export default function App() {
           board.setActiveProjectId(id);
         }}
         onCreateProject={board.createProject}
+        onCreateOrganization={board.createOrganization}
+        onRenameOrganization={board.renameOrganization}
+        onChangeOrganization={board.changeProjectOrganization}
         onRenameProject={board.renameProject}
         onDeleteProject={board.deleteProject}
         onExportProject={board.exportProject}

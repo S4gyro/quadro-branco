@@ -7,6 +7,7 @@ export async function pushBoardToCloud(userId, boardData) {
     id: boardData.id,
     user_id: userId,
     name: boardData.name,
+    organization: boardData.organization || 'Geral',
     items: boardData.items || [],
     trash_items: boardData.trashItems || [],
     connections: boardData.connections || [],
@@ -42,13 +43,25 @@ export async function syncAllBoards(userId) {
         getDB(`board_${proj.id}_connections`),
         getDB(`board_${proj.id}_view`),
       ]);
-      await pushBoardToCloud(userId, { id: proj.id, name: proj.name, items, trashItems, connections, view });
+      await pushBoardToCloud(userId, {
+        id: proj.id,
+        name: proj.name,
+        organization: proj.organization || 'Geral',
+        items,
+        trashItems,
+        connections,
+        view,
+      });
     }
     return localProjects;
   }
 
   // Se já existem quadros na nuvem, baixa e salva no IndexedDB local
-  const mergedProjects = cloudBoards.map((b) => ({ id: b.id, name: b.name }));
+  const mergedProjects = cloudBoards.map((b) => ({
+    id: b.id,
+    name: b.name,
+    organization: b.organization || 'Geral',
+  }));
   await setDB('quadro_projects', mergedProjects);
 
   for (const b of cloudBoards) {
